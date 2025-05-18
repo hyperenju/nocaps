@@ -4,6 +4,9 @@
 #include <linux/kprobes.h>
 #include <linux/module.h>
 
+static bool disable_caps = false;
+module_param(disable_caps, bool, S_IRUGO | S_IWUSR);
+
 #define KBD_STATUS_MASK 0x80
 #define KBD_SCANCODE_MASK 0x7f
 #define KBD_SCANCODE_CAPS 58
@@ -21,18 +24,33 @@
  */
 #define SYMBOL_NAME "atkbd_receive_byte"
 
-static int __kprobes caps_to_ctrl(struct kprobe *p, struct pt_regs *regs) {
-    unsigned char data = regs->si; /* rsi is second argument in x86. */
-    if ((data & KBD_SCANCODE_MASK) != KBD_SCANCODE_CAPS)
-        return 0;
+static int __kprobes swap_scancode(struct kprobe *p, struct pt_regs *regs) {
+    /* rsi is second argument in x86. */
+    unsigned char scancode = regs->si & KBD_SCANCODE_MASK;
+    unsigned char status = regs->si & KBD_STATUS_MASK;
 
-    regs->si = KBD_SCANCODE_CTRL + (data & KBD_STATUS_MASK);
+    switch (scancode) {
+    case KBD_SCANCODE_CAPS:
+        scancode = KBD_SCANCODE_CTRL;
+        break;
+
+    case KBD_SCANCODE_CTRL:
+        if (disable_caps)
+            return 0;
+        scancode = KBD_SCANCODE_CAPS;
+        break;
+
+    default:
+        return 0;
+    }
+
+    regs->si = scancode + status;
     return 0;
 }
 
 static struct kprobe kp = {
     .symbol_name = SYMBOL_NAME,
-    .pre_handler = caps_to_ctrl,
+    .pre_handler = swap_scancode,
 };
 
 static int nocaps_init(void) {

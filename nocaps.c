@@ -1,16 +1,15 @@
 #define pr_fmt(fmt) "%s:%s():%d: " fmt, KBUILD_MODNAME, __func__, __LINE__
 
 #include <linux/kernel.h>
-#include <linux/kprobes.h>
 #include <linux/module.h>
+#include <linux/kprobes.h>
+#include <linux/input.h>
 
 static bool disable_caps = false;
 module_param(disable_caps, bool, S_IRUGO | S_IWUSR);
 
 #define KBD_STATUS_MASK 0x80
 #define KBD_SCANCODE_MASK 0x7f
-#define KBD_SCANCODE_CAPS 58
-#define KBD_SCANCODE_CTRL 29
 
 /* Which function to choose as the attach point:
  * Since builtin keyboard is probed by atkbd in my laptop like this:
@@ -30,14 +29,14 @@ static int __kprobes swap_scancode(struct kprobe *p, struct pt_regs *regs) {
     unsigned char status = regs->si & KBD_STATUS_MASK;
 
     switch (scancode) {
-    case KBD_SCANCODE_CAPS:
-        scancode = KBD_SCANCODE_CTRL;
+    case KEY_CAPSLOCK:
+        scancode = KEY_LEFTCTRL;
         break;
 
-    case KBD_SCANCODE_CTRL:
+    case KEY_LEFTCTRL:
         if (disable_caps)
             return 0;
-        scancode = KBD_SCANCODE_CAPS;
+        scancode = KEY_CAPSLOCK;
         break;
 
     default:

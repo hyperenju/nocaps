@@ -23,10 +23,27 @@ module_param(disable_caps, bool, S_IRUGO | S_IWUSR);
  */
 #define SYMBOL_NAME "atkbd_receive_byte"
 
+#define EXTENDED_E0_PREFIX 0xe0
+static atomic_t extended_e0_mode = ATOMIC_INIT(0);
+
 static int __kprobes swap_scancode(struct kprobe *p, struct pt_regs *regs) {
     /* rsi is second argument in x86. */
-    unsigned char scancode = regs->si & KBD_SCANCODE_MASK;
-    unsigned char status = regs->si & KBD_STATUS_MASK;
+    unsigned char raw = regs->si;
+    unsigned char scancode = raw & KBD_SCANCODE_MASK;
+    unsigned char status = raw & KBD_STATUS_MASK;
+
+    /* Skip conversion when we are in the sequence of extended scancodes that
+     * start with 0xE0 and consist of 2 bytes.
+     */
+    if (raw == EXTENDED_E0_PREFIX) {
+        atomic_set(&extended_e0_mode, 1);
+        return 0;
+    }
+
+    if (atomic_read(&extended_e0_mode)) {
+        atomic_set(&extended_e0_mode, 0);
+        return 0;
+    }
 
     switch (scancode) {
     case KEY_CAPSLOCK:
